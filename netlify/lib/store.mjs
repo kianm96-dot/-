@@ -130,7 +130,7 @@ async function updateSnapshotSeat(seatObj) {
   const store = seatsStore();
   try {
     for (let attempt = 0; attempt < SNAPSHOT_WRITE_RETRY; attempt++) {
-      const entry = await store.getWithMetadata(SNAPSHOT_KEY, { type: "json" });
+      const entry = await store.getWithMetadata(SNAPSHOT_KEY, { type: "json", consistency: "strong" });
       const seats = (entry && entry.data) || [];
       const idx = seats.findIndex((s) => s.seatId === seatObj.seatId);
       if (idx === -1) seats.push(seatObj);
@@ -147,7 +147,7 @@ async function updateSnapshotSeat(seatObj) {
 
 export async function getAllSeats() {
   const store = seatsStore();
-  const data = await store.get(SNAPSHOT_KEY, { type: "json" });
+  const data = await store.get(SNAPSHOT_KEY, { type: "json", consistency: "strong" });
   return data || [];
 }
 
