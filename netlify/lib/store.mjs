@@ -3,10 +3,15 @@ import { getStore } from "@netlify/blobs";
 const SEAT_PREFIX = "seat:";
 const STUDENT_PREFIX = "student:";
 const OPEN_TIME_KEY = "open-time.json";
+const SNAPSHOT_KEY = "seats-snapshot.json";
 const SEAT_WRITE_RETRY = 8;
+const SNAPSHOT_WRITE_RETRY = 3;
 
+// 저장소는 기본(빠른/edge-cached) 상태로 두고, 정확성이 꼭 필요한
+// 개별 읽기에만 그때그때 consistency:"strong" 옵션을 붙인다.
+// (스토어 전체를 strong으로 두면 모든 요청이 느려진다.)
 export function seatsStore() {
-  return getStore({ name: "erain-seats", consistency: "strong" });
+  return getStore("erain-seats");
 }
 
 function sleep(ms) {
@@ -63,28 +68,19 @@ function makeSeat(seatId, car, cls) {
 }
 
 // ---------------------------------------------------------------------
-// 좌석: 한 좌석 = 하나의 독립된 Blob (seat:{seatId})
-// 이렇게 분리해두면, 서로 다른 좌석을 동시에 예약하는 학생들끼리는
-// 절대 충돌하지 않고, "정확히 같은 좌석"을 동시에 클릭한 경우에만
-// 자동 재시도로 처리됩니다.
+// 좌석: 한 좌석 = 하나의 독립된 Blob (seat:{seatId}) - 예약/취소의 "진짜 정답"
+// 여기에 강한 일관성(strong)을 적용해서, 정확히 같은 좌석을 동시에
+// 클릭했을 때만 충돌하고 자동 재시도로 안전하게 처리된다.
 // ---------------------------------------------------------------------
 export async function getSeat(seatId) {
   const store = seatsStore();
-  return await store.get(SEAT_PREFIX + seatId, { type: "json" });
+  return await store.get(SEAT_PREFIX + seatId, { type: "json", consistency: "strong" });
 }
 
 export async function setSeatForce(seatId, seatObj) {
   const store = seatsStore();
   await store.setJSON(SEAT_PREFIX + seatId, seatObj);
-}
-
-export async function getAllSeats() {
-  const store = seatsStore();
-  const listRes = await store.list({ prefix: SEAT_PREFIX });
-  const blobs = (listRes && listRes.blobs) || [];
-  if (!blobs.length) return [];
-  const seats = await Promise.all(blobs.map((b) => store.get(b.key, { type: "json" })));
-  return seats.filter(Boolean);
+  await updateSnapshotSeat(seatObj);
 }
 
 /**
@@ -97,7 +93,7 @@ export async function updateSeatAtomic(seatId, mutateFn) {
   const key = SEAT_PREFIX + seatId;
 
   for (let attempt = 0; attempt < SEAT_WRITE_RETRY; attempt++) {
-    const entry = await store.getWithMetadata(key, { type: "json" });
+    const entry = await store.getWithMetadata(key, { type: "json", consistency: "strong" });
     if (!entry || !entry.data) {
       return { success: false, msg: "존재하지 않는 좌석입니다." };
     }
@@ -111,6 +107,7 @@ export async function updateSeatAtomic(seatId, mutateFn) {
 
     const writeRes = await store.setJSON(key, nextSeat, { onlyIfMatch: entry.etag });
     if (!writeRes || writeRes.modified) {
+      await updateSnapshotSeat(nextSeat);
       return result;
     }
     // 정확히 같은 좌석에 동시 요청이 들어온 경우 -> 잠깐 대기 후 재시도
@@ -118,6 +115,40 @@ export async function updateSeatAtomic(seatId, mutateFn) {
   }
 
   return { success: false, msg: "이 좌석에 신청이 몰리고 있어요. 잠시 후 다시 시도해주세요." };
+}
+
+// ---------------------------------------------------------------------
+// 좌석 전체 목록 읽기용 "빠른 캐시본(snapshot)"
+// - 학생/관리자 화면에 좌석 배치도를 그릴 때는 좌석 196개를 하나씩
+//   읽지 않고, 이 캐시본 하나만 읽어서 빠르게 응답한다.
+// - 실제 예약/취소의 정답은 항상 위의 seat:{seatId} 개별 Blob이고,
+//   이 캐시본은 "보여주기용"이라 아주 짧은 시간(보통 수백 ms 이내)
+//   지연될 수 있지만, 예약 시도 자체는 항상 원본 좌석 데이터로
+//   재검증되므로 중복예약 등 실제 오류로 이어지지 않는다.
+// ---------------------------------------------------------------------
+async function updateSnapshotSeat(seatObj) {
+  const store = seatsStore();
+  try {
+    for (let attempt = 0; attempt < SNAPSHOT_WRITE_RETRY; attempt++) {
+      const entry = await store.getWithMetadata(SNAPSHOT_KEY, { type: "json" });
+      const seats = (entry && entry.data) || [];
+      const idx = seats.findIndex((s) => s.seatId === seatObj.seatId);
+      if (idx === -1) seats.push(seatObj);
+      else seats[idx] = seatObj;
+
+      const writeOpts = entry && entry.etag ? { onlyIfMatch: entry.etag } : { onlyIfNew: true };
+      const writeRes = await store.setJSON(SNAPSHOT_KEY, seats, writeOpts);
+      if (!writeRes || writeRes.modified) return;
+    }
+  } catch (e) {
+    // 캐시본 갱신은 최선의 노력(best-effort)일 뿐, 실패해도 예약 자체엔 지장 없음
+  }
+}
+
+export async function getAllSeats() {
+  const store = seatsStore();
+  const data = await store.get(SNAPSHOT_KEY, { type: "json" });
+  return data || [];
 }
 
 // ---------------------------------------------------------------------
@@ -141,7 +172,7 @@ export async function releaseStudentClaim(studentId) {
 
 export async function getStudentSeatId(studentId) {
   const store = seatsStore();
-  const val = await store.get(STUDENT_PREFIX + studentId);
+  const val = await store.get(STUDENT_PREFIX + studentId, { consistency: "strong" });
   return val || "";
 }
 
@@ -169,16 +200,18 @@ export async function resetAllSeats() {
 
   const seats = generateSeats();
   await Promise.all(seats.map((s) => store.setJSON(SEAT_PREFIX + s.seatId, s)));
+  await store.setJSON(SNAPSHOT_KEY, seats);
 
   return seats.length;
 }
 
 // ---------------------------------------------------------------------
-// 신청 시작 시간
+// 신청 시작 시간 (작은 값 하나라 강한 일관성으로 읽어도 느려지지 않음.
+// 선착순 공정성을 위해 항상 최신 값을 즉시 읽어야 한다.)
 // ---------------------------------------------------------------------
 export async function getOpenTime() {
   const store = seatsStore();
-  const data = await store.get(OPEN_TIME_KEY, { type: "json" });
+  const data = await store.get(OPEN_TIME_KEY, { type: "json", consistency: "strong" });
   return (data && data.openTime) || "";
 }
 

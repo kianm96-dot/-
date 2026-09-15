@@ -252,11 +252,8 @@
           });
           const data = await res.json();
           alert(data.msg);
-          if (data.success) {
-            location.reload();
-          } else {
-            document.body.style.pointerEvents = "auto";
-          }
+          // 성공/실패 상관없이 새로고침해서 방금 바뀐(다른 사람이 채간) 좌석 현황을 바로 보여준다.
+          location.reload();
         } catch (err) {
           alert("오류: " + err.message);
           document.body.style.pointerEvents = "auto";
@@ -274,11 +271,7 @@
           });
           const data = await res.json();
           alert(data.msg);
-          if (data.success) {
-            location.reload();
-          } else {
-            document.body.style.pointerEvents = "auto";
-          }
+          location.reload();
         } catch (err) {
           alert("오류: " + err.message);
           document.body.style.pointerEvents = "auto";
