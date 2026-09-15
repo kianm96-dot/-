@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E-트레인 관리자 현황판</title>
+    <style>
+      body { font-family: 'Malgun Gothic', sans-serif; background-color: #f0f2f5; margin: 0; padding: 15px; }
+      .container { max-width: 1300px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+      .hidden { display: none !important; }
+
+      /* 관리자 로그인 */
+      .login-box { max-width: 360px; margin: 60px auto; text-align: center; }
+      .login-box input { width: 100%; padding: 12px; margin: 8px 0; box-sizing: border-box; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; }
+      .login-box button { width: 100%; padding: 14px; background: #1976d2; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; }
+
+      /* 상단 컨트롤 패널 */
+      .panel { background:#e3f2fd; border-radius:8px; padding:14px 18px; margin-bottom: 14px; }
+      .panel h4 { margin: 0 0 8px 0; color:#0d47a1; }
+      .panel-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+      .panel input[type="datetime-local"] { padding:8px; border-radius:6px; border:1px solid #ccc; font-size:14px; }
+      .btn { padding:9px 16px; border:none; border-radius:6px; font-size:14px; font-weight:bold; cursor:pointer; color:#fff; }
+      .btn-primary { background:#1976d2; }
+      .btn-danger { background:#e53935; }
+      .btn-gray { background:#616161; }
+      .btn-green { background:#388e3c; }
+      .stat-bar { display:flex; gap:16px; margin-top:8px; font-size:14px; color:#333; }
+      .stat-bar b { color:#0d47a1; }
+
+      /* 기차 배치도 */
+      .train-container { display: flex; gap: 15px; overflow-x: auto; padding-bottom: 15px; margin-top: 10px; }
+      .car { border: 2px solid #333; border-radius: 8px; background: #fafafa; min-width: 280px; padding: 8px; box-sizing: border-box; }
+      .car-title { text-align: center; font-weight: bold; padding: 8px 0; border-bottom: 2px solid #333; margin-bottom: 8px; background: #e0e0e0; }
+
+      .car-body { display: flex; justify-content: space-between; align-items: stretch; }
+      .side-col { display: flex; flex-direction: column; gap: 4px; width: 118px; }
+      .aisle { width: 30px; background: #eee; border-left: 1px dashed #ccc; border-right: 1px dashed #ccc; display: flex; align-items: center; justify-content: center; writing-mode: vertical-rl; font-size: 12px; color: #555; font-weight: bold; letter-spacing: 2px; }
+
+      .row-pair { display: flex; gap: 4px; }
+
+      /* 관리자용 좌석 셀: 좌석버튼 + 하단 학번/이름 라벨 */
+      .seat-cell { flex: 1; display:flex; flex-direction:column; }
+      .seat { height: 30px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; border-radius: 4px 4px 0 0; border: 1px solid rgba(0,0,0,0.2); cursor: pointer; user-select: none; color: #fff; }
+      .seat-label { height: 26px; font-size: 10px; line-height: 12px; text-align:center; background:#fff; border:1px solid #ddd; border-top:none; border-radius:0 0 4px 4px; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#333; cursor:pointer; overflow:hidden; }
+      .seat-label .nm { font-weight:bold; }
+      .seat-label.empty { color:#bbb; }
+
+      .stage { width: 100%; height: 34px; background-color: #fff3cd; border: 1px dashed #856404; color: #856404; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: bold; border-radius: 4px; margin: 2px 0; }
+      .wheelchair { width: 100%; height: 34px; background-color: #e2e3e5; border: 1px solid #6c757d; color: #383d41; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; border-radius: 4px; margin: 2px 0; }
+
+      .class-0 { background-color:#bdbdbd; color:#fff; }
+      .class-1 { background-color: #f44336; color: white; }
+      .class-2 { background-color: #ff9800; color: white; }
+      .class-3 { background-color: #fdd835; color: black; }
+      .class-4 { background-color: #4caf50; color: white; }
+      .class-5 { background-color: #2196f3; color: white; }
+      .class-6 { background-color: #9c27b0; color: white; }
+      .class-7 { background-color: #9e9e9e; color: white; }
+
+      .seat.booked { outline: 2px solid #333; }
+
+      .legend-bar { display: flex; gap: 8px; margin-top: 20px; justify-content: center; flex-wrap: wrap; }
+      .legend-item { padding: 6px 14px; border-radius: 4px; font-size: 13px; font-weight: bold; }
+
+      /* 배정/삭제 모달 */
+      .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.45); display:flex; align-items:center; justify-content:center; z-index:100; }
+      .modal-box { background:#fff; border-radius:10px; padding:22px; width:320px; box-shadow:0 8px 24px rgba(0,0,0,0.25); }
+      .modal-box h4 { margin-top:0; }
+      .modal-box input { width:100%; padding:10px; margin:6px 0; box-sizing:border-box; border:1px solid #ccc; border-radius:6px; font-size:14px; }
+      .modal-actions { display:flex; gap:8px; margin-top:12px; }
+      .modal-actions button { flex:1; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2 style="text-align: center; margin-top:0;">E-트레인 관리자 현황판</h2>
+
+      <!-- 관리자 로그인 -->
+      <div id="login-section" class="login-box">
+        <p>관리자 비밀번호를 입력하세요.</p>
+        <input type="password" id="adminPw" placeholder="비밀번호">
+        <button onclick="adminLogin()">입장</button>
+      </div>
+
+      <!-- 관리자 메인 화면 -->
+      <div id="main-section" class="hidden">
+        <div class="panel">
+          <h4>⏰ 선착순 신청 시작 시간 설정</h4>
+          <div class="panel-row">
+            <input type="datetime-local" id="openTimeInput">
+            <button class="btn btn-primary" onclick="saveOpenTime()">시간 설정</button>
+            <button class="btn btn-gray" onclick="clearOpenTime()">제한 해제(즉시 오픈)</button>
+            <span id="openTimeStatus" style="font-size:13px; color:#555;"></span>
+          </div>
+          <div class="stat-bar">
+            <span>전체 좌석: <b id="statTotal">-</b></span>
+            <span>예약 완료: <b id="statBooked">-</b></span>
+            <button class="btn btn-gray" style="margin-left:auto;" onclick="loadAdminData()">🔄 새로고침</button>
+            <button class="btn btn-danger" onclick="resetSeatDb()">⚠ 좌석 DB 초기화/재생성</button>
+          </div>
+        </div>
+
+        <div style="font-size:13px; color:#555; text-align:right;">좌석을 클릭하면 수동 배정 / 삭제할 수 있습니다.</div>
+        <div class="train-container" id="train-map"></div>
+
+        <div class="legend-bar">
+          <div class="legend-item class-1">1반</div>
+          <div class="legend-item class-2">2반</div>
+          <div class="legend-item class-3">3반</div>
+          <div class="legend-item class-4">4반</div>
+          <div class="legend-item class-5">5반</div>
+          <div class="legend-item class-6">6반</div>
+          <div class="legend-item class-7">7반</div>
+          <div class="legend-item class-0">무대/휠체어</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 배정/삭제 모달 -->
+    <div id="modal-overlay" class="modal-overlay hidden">
+      <div class="modal-box">
+        <h4 id="modal-title">좌석 배정</h4>
+        <input type="text" id="modalStudentId" placeholder="학번 (5자리)" maxlength="5">
+        <input type="text" id="modalStudentName" placeholder="이름">
+        <div class="modal-actions">
+          <button class="btn btn-green" onclick="submitAssign()">배정/수정 저장</button>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-danger" id="modalCancelBtn" onclick="submitCancel()">예약 삭제</button>
+          <button class="btn btn-gray" onclick="closeModal()">닫기</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/shared/car-layouts.js"></script>
+    <script>
+      let adminPw = sessionStorage.getItem('adminPw') || '';
+      let currentSeatId = null;
+      let lastData = null;
+
+      function adminHeaders(extra) {
+        return Object.assign({ 'x-admin-password': adminPw }, extra || {});
+      }
+
+      async function adminLogin() {
+        const pw = document.getElementById('adminPw').value;
+        if (!pw) { alert('비밀번호를 입력해주세요.'); return; }
+        adminPw = pw;
+        const ok = await loadAdminData();
+        if (ok) {
+          sessionStorage.setItem('adminPw', adminPw);
+          document.getElementById('login-section').classList.add('hidden');
+          document.getElementById('main-section').classList.remove('hidden');
+        }
+      }
+
+      async function loadAdminData() {
+        try {
+          const res = await fetch('/api/admin-data', { headers: adminHeaders() });
+          if (res.status === 401) {
+            alert('비밀번호가 올바르지 않습니다.');
+            return false;
+          }
+          const data = await res.json();
+          if (data.error) {
+            alert(data.error);
+            return false;
+          }
+          lastData = data;
+          document.getElementById('statTotal').innerText = data.totalSeats;
+          document.getElementById('statBooked').innerText = data.totalBooked;
+          document.getElementById('openTimeStatus').innerText = data.openTime
+            ? ('현재 설정: ' + data.openTime.replace('T', ' '))
+            : '현재 설정: 없음(즉시 오픈)';
+          if (data.openTime) document.getElementById('openTimeInput').value = data.openTime;
+          renderTrainMap(data);
+          return true;
+        } catch (err) {
+          alert('오류: ' + err.message);
+          return false;
+        }
+      }
+
+      async function saveOpenTime() {
+        const val = document.getElementById('openTimeInput').value;
+        if (!val) { alert('시간을 선택해주세요.'); return; }
+        await postOpenTime(val);
+      }
+      async function clearOpenTime() {
+        document.getElementById('openTimeInput').value = '';
+        await postOpenTime('');
+      }
+      async function postOpenTime(val) {
+        try {
+          const res = await fetch('/api/open-time', {
+            method: 'POST',
+            headers: adminHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ openTime: val })
+          });
+          const data = await res.json();
+          alert(data.msg || (data.success ? '완료' : '실패'));
+          loadAdminData();
+        } catch (err) {
+          alert('오류: ' + err.message);
+        }
+      }
+
+      async function resetSeatDb() {
+        if (!confirm('정말 전체 좌석 DB를 초기화/재생성 하시겠습니까?\n모든 예약 정보가 삭제됩니다.')) return;
+        try {
+          const res = await fetch('/api/init-seats', { method: 'POST', headers: adminHeaders() });
+          const data = await res.json();
+          alert(data.msg);
+          loadAdminData();
+        } catch (err) {
+          alert('오류: ' + err.message);
+        }
+      }
+
+      function renderTrainMap(res) {
+        const trainMap = document.getElementById('train-map');
+        trainMap.innerHTML = '';
+
+        [2, 3, 4, 7].forEach(carNum => {
+          const carData = CAR_LAYOUTS[carNum];
+          const carDiv = document.createElement('div');
+          carDiv.className = 'car';
+
+          let html = `<div class="car-title">${carData.title}</div><div class="car-body">`;
+
+          html += `<div class="side-col">`;
+          carData.left.forEach(row => html += renderRow(carNum, row, res));
+          html += `</div>`;
+
+          html += `<div class="aisle">${carData.title}</div>`;
+
+          html += `<div class="side-col">`;
+          carData.right.forEach(row => html += renderRow(carNum, row, res));
+          html += `</div>`;
+
+          html += `</div>`;
+          carDiv.innerHTML = html;
+          trainMap.appendChild(carDiv);
+        });
+      }
+
+      function renderRow(carNum, row, res) {
+        if (row === 'STAGE') return `<div class="stage">무대</div>`;
+        if (typeof row === 'string' && row.startsWith('WHEELCHAIR')) {
+          const num = row.split('_')[1];
+          return `<div class="wheelchair">휠체어고정석 ${num}</div>`;
+        }
+
+        let rowHtml = `<div class="row-pair">`;
+        row.forEach(seatNum => {
+          const seatId = `${carNum}호차-${seatNum}`;
+          const seatInfo = res.seats[seatId];
+
+          if (!seatInfo) {
+            rowHtml += `<div class="seat-cell"><div class="seat class-0">-</div><div class="seat-label empty">-</div></div>`;
+            return;
+          }
+
+          const assignedClass = seatInfo.assignedClass;
+          const isBooked = (seatInfo.status === '예약완료');
+          const seatCss = `seat class-${assignedClass}` + (isBooked ? ' booked' : '');
+          const labelHtml = isBooked
+            ? `<div class="nm">${escapeHtml(seatInfo.studentName)}</div><div>${escapeHtml(seatInfo.studentId)}</div>`
+            : `빈좌석`;
+          const labelCss = 'seat-label' + (isBooked ? '' : ' empty');
+
+          rowHtml += `<div class="seat-cell" onclick="openModal('${seatId}')">
+              <div class="${seatCss}">${seatNum}</div>
+              <div class="${labelCss}">${labelHtml}</div>
+            </div>`;
+        });
+        rowHtml += `</div>`;
+        return rowHtml;
+      }
+
+      function escapeHtml(str) {
+        return String(str || '').replace(/[&<>"']/g, c => ({
+          '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+      }
+
+      function openModal(seatId) {
+        currentSeatId = seatId;
+        const info = lastData.seats[seatId];
+        document.getElementById('modal-title').innerText = seatId + ' 관리';
+        document.getElementById('modalStudentId').value = info.studentId || '';
+        document.getElementById('modalStudentName').value = info.studentName || '';
+        document.getElementById('modalCancelBtn').classList.toggle('hidden', info.status !== '예약완료');
+        document.getElementById('modal-overlay').classList.remove('hidden');
+      }
+      function closeModal() {
+        document.getElementById('modal-overlay').classList.add('hidden');
+        currentSeatId = null;
+      }
+
+      async function submitAssign() {
+        const studentId = document.getElementById('modalStudentId').value.trim();
+        const studentName = document.getElementById('modalStudentName').value.trim();
+        if (!/^\d{5}$/.test(studentId) || !studentName) {
+          alert('학번(5자리 숫자)과 이름을 정확히 입력해주세요.');
+          return;
+        }
+        try {
+          const res = await fetch('/api/admin-assign', {
+            method: 'POST',
+            headers: adminHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ seatId: currentSeatId, studentId, studentName })
+          });
+          const data = await res.json();
+          alert(data.msg);
+          closeModal();
+          loadAdminData();
+        } catch (err) {
+          alert('오류: ' + err.message);
+        }
+      }
+
+      async function submitCancel() {
+        if (!confirm(currentSeatId + ' 좌석 예약을 삭제하시겠습니까?')) return;
+        try {
+          const res = await fetch('/api/admin-cancel', {
+            method: 'POST',
+            headers: adminHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ seatId: currentSeatId })
+          });
+          const data = await res.json();
+          alert(data.msg);
+          closeModal();
+          loadAdminData();
+        } catch (err) {
+          alert('오류: ' + err.message);
+        }
+      }
+
+      // 세션에 저장된 비밀번호가 있으면 자동 로그인 시도
+      (async function tryAutoLogin() {
+        if (adminPw) {
+          const ok = await loadAdminData();
+          if (ok) {
+            document.getElementById('login-section').classList.add('hidden');
+            document.getElementById('main-section').classList.remove('hidden');
+          } else {
+            sessionStorage.removeItem('adminPw');
+            adminPw = '';
+          }
+        }
+      })();
+    </script>
+  </body>
+</html>

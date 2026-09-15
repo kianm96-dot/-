@@ -1,0 +1,13 @@
+{
+  "name": "etrain-seat-booking",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "E-트레인 기차 좌석 선착순 예약 시스템 (Netlify 버전)",
+  "scripts": {
+    "dev": "netlify dev"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
+  }
+}
