@@ -4,15 +4,56 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>E-트레인 좌석 선착순 예약</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Jua&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
-      body { font-family: 'Malgun Gothic', sans-serif; background-color: #f0f2f5; margin: 0; padding: 15px; }
-      .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+      body {
+        font-family: 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+        margin: 0; padding: 15px;
+        background: linear-gradient(180deg, #EAF6FF 0%, #FDF6E8 100%);
+        min-height: 100vh;
+      }
+      .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 18px; box-shadow: 0 10px 30px rgba(27,75,102,0.10); }
       .hidden { display: none !important; }
+      .page-title {
+        font-family: 'Jua', 'Noto Sans KR', sans-serif;
+        text-align: center; margin-top: 4px; margin-bottom: 0;
+        color: #1B4B66; font-size: 26px; letter-spacing: 0.5px;
+      }
 
       /* 로그인 영역 */
-      .login-box { max-width: 400px; margin: 40px auto; text-align: center; }
-      .login-box input { width: 100%; padding: 12px; margin: 8px 0; box-sizing: border-box; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; }
-      .login-box button { width: 100%; padding: 14px; background: #1976d2; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; }
+      .login-box { max-width: 380px; margin: 12px auto 30px; text-align: center; }
+      .mascot-wrap { display:flex; justify-content:center; margin-bottom: 6px; }
+      .mascot-wrap svg { animation: mascot-bob 3.2s ease-in-out infinite; }
+      @keyframes mascot-bob {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-6px); }
+      }
+      .hero-wrap { margin: 0 0 6px; }
+      .hero-img { width: 100%; border-radius: 16px; display: block; box-shadow: 0 6px 18px rgba(27,75,102,0.18); }
+      .welcome-text {
+        font-family: 'Jua', 'Noto Sans KR', sans-serif;
+        color: #1B4B66; font-size: 19px; margin: 6px 0 2px;
+      }
+      .welcome-sub { color: #6B8496; font-size: 14px; margin: 0 0 22px; }
+      .login-box input {
+        width: 100%; padding: 13px 18px; margin: 8px 0; box-sizing: border-box;
+        border: 2px solid #DCEAF2; border-radius: 999px; font-size: 15px;
+        background: #F7FBFD; color: #1B4B66; outline: none;
+        transition: border-color 0.15s ease, background 0.15s ease;
+      }
+      .login-box input::placeholder { color: #9FB6C4; }
+      .login-box input:focus { border-color: #FF6B4A; background: #ffffff; }
+      .login-box button {
+        width: 100%; padding: 14px; margin-top: 10px;
+        background: linear-gradient(180deg, #FF8064 0%, #FF6B4A 100%);
+        color: white; border: none; border-radius: 999px; font-size: 16px;
+        font-weight: 700; cursor: pointer; box-shadow: 0 6px 16px rgba(255,107,74,0.35);
+        transition: transform 0.12s ease, box-shadow 0.12s ease;
+      }
+      .login-box button:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(255,107,74,0.42); }
+      .login-box button:active { transform: translateY(0); }
 
       /* 기차 메인배치도 그리드 */
       .train-container { display: flex; gap: 15px; overflow-x: auto; padding-bottom: 15px; margin-top: 20px; }
@@ -54,11 +95,12 @@
   </head>
   <body>
     <div class="container">
-      <h2 style="text-align: center; margin-top:0;">E-트레인 기차 좌석 선착순 예약</h2>
-
       <!-- 로그인 화면 -->
       <div id="login-section" class="login-box">
-        <p>학번(5자리)과 이름을 입력하세요.</p>
+        <div class="hero-wrap">
+          <img src="/assets/hero-mascot.jpg" alt="E-트레인" class="hero-img">
+        </div>
+        <p class="welcome-sub" style="margin-top:14px;">학번(5자리)과 이름을 입력하고 입장해주세요</p>
         <input type="text" id="studentId" placeholder="학번 예: 30705 (3학년 7반 5번)" maxlength="5">
         <input type="text" id="name" placeholder="이름">
         <button onclick="login()">좌석배치도 입장</button>
@@ -71,12 +113,12 @@
 
       <!-- 메인 예약 화면 -->
       <div id="main-section" class="hidden">
-        <div style="display:flex; justify-content:space-between; align-items:center; background:#e3f2fd; padding:12px 20px; border-radius:8px; flex-wrap:wrap; gap:8px;">
-          <h3 id="user-info" style="margin:0; color:#0d47a1;"></h3>
-          <div id="my-booking-info" style="font-size:14px; color:#0d47a1;"></div>
-          <span style="font-size:13px; color:#555;">
+        <div style="display:flex; justify-content:space-between; align-items:center; background:#EAF6FF; padding:12px 20px; border-radius:14px; flex-wrap:wrap; gap:8px;">
+          <h3 id="user-info" style="margin:0; color:#1B4B66;"></h3>
+          <div id="my-booking-info" style="font-size:14px; color:#1B4B66;"></div>
+          <span style="font-size:13px; color:#6B8496;">
             ※ 🔒 표시는 타 반 좌석으로 선택이 불가능합니다.
-            <a href="#" onclick="logout(); return false;" style="margin-left:10px; color:#1976d2;">다른 학생으로 입장</a>
+            <a href="#" onclick="logout(); return false;" style="margin-left:10px; color:#FF6B4A;">다른 학생으로 입장</a>
           </span>
         </div>
 
