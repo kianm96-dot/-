@@ -23,7 +23,10 @@ export default async (req) => {
     };
   });
 
+  const mySeat = seats.find((s) => s.studentId === studentId && s.status === "예약완료");
+  const myBookedSeatId = mySeat ? mySeat.seatId : "";
+
   const openTime = await getOpenTime();
 
-  return jsonResponse({ seats: seatMap, studentClass: stuClass, openTime });
+  return jsonResponse({ seats: seatMap, studentClass: stuClass, openTime, myBookedSeatId });
 };

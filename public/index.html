@@ -43,6 +43,9 @@
       .seat.locked { background-color: #e0e0e0 !important; color: #a0a0a0 !important; cursor: not-allowed; border: 1px solid #ccc; position: relative; }
       .seat.locked::after { content: '🔒'; font-size: 10px; position: absolute; right: 2px; bottom: 1px; }
       .seat.booked { background-color: #333333 !important; color: #ffffff !important; cursor: not-allowed; text-decoration: line-through; }
+      .seat.mine { background-color: #333333 !important; color: #ffd54f !important; cursor: pointer; text-decoration: line-through; outline: 3px solid #ffd54f; outline-offset: 1px; }
+
+      .cancel-btn { padding: 6px 12px; background:#e53935; color:#fff; border:none; border-radius:6px; font-size:13px; font-weight:bold; cursor:pointer; margin-left:8px; }
 
       /* 아래쪽 범례 */
       .legend-bar { display: flex; gap: 8px; margin-top: 25px; justify-content: center; flex-wrap: wrap; }
@@ -68,8 +71,9 @@
 
       <!-- 메인 예약 화면 -->
       <div id="main-section" class="hidden">
-        <div style="display:flex; justify-content:space-between; align-items:center; background:#e3f2fd; padding:12px 20px; border-radius:8px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; background:#e3f2fd; padding:12px 20px; border-radius:8px; flex-wrap:wrap; gap:8px;">
           <h3 id="user-info" style="margin:0; color:#0d47a1;"></h3>
+          <div id="my-booking-info" style="font-size:14px; color:#0d47a1;"></div>
           <span style="font-size:13px; color:#555;">※ 🔒 표시는 타 반 좌석으로 선택이 불가능합니다.</span>
         </div>
 
@@ -127,6 +131,14 @@
         document.getElementById("main-section").classList.remove("hidden");
         document.getElementById("user-info").innerText = `${currentName} 학생 (반: ${res.studentClass}반 좌석 활성화)`;
 
+        const bookingInfo = document.getElementById("my-booking-info");
+        if (res.myBookedSeatId) {
+          bookingInfo.innerHTML = `내 예약 좌석: <b>${res.myBookedSeatId}</b>` +
+            `<button class="cancel-btn" onclick="cancelMySeat('${res.myBookedSeatId}')">예약 취소</button>`;
+        } else {
+          bookingInfo.innerHTML = '';
+        }
+
         const trainMap = document.getElementById("train-map");
         trainMap.innerHTML = '';
 
@@ -173,11 +185,15 @@
           const assignedClass = seatInfo.assignedClass;
           const isMine = (assignedClass === res.studentClass);
           const isBooked = (seatInfo.status === '예약완료');
+          const isMyBookedSeat = (seatId === res.myBookedSeatId);
 
           let cssClass = `seat class-${assignedClass}`;
           let clickAttr = '';
 
-          if (isBooked) {
+          if (isMyBookedSeat) {
+            cssClass += ' mine';
+            clickAttr = `onclick="cancelMySeat('${seatId}')" title="클릭하면 예약을 취소합니다"`;
+          } else if (isBooked) {
             cssClass += ' booked';
           } else if (!isMine) {
             cssClass += ' locked';
@@ -199,6 +215,28 @@
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ studentId: currentStuId, name: currentName, seatId })
+          });
+          const data = await res.json();
+          alert(data.msg);
+          if (data.success) {
+            location.reload();
+          } else {
+            document.body.style.pointerEvents = "auto";
+          }
+        } catch (err) {
+          alert("오류: " + err.message);
+          document.body.style.pointerEvents = "auto";
+        }
+      }
+
+      async function cancelMySeat(seatId) {
+        if (!confirm(`[${seatId}] 예약을 취소하시겠습니까?\n취소 후 다른 좌석을 다시 선택할 수 있습니다.`)) return;
+        document.body.style.pointerEvents = "none";
+        try {
+          const res = await fetch('/api/cancel-own-seat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ studentId: currentStuId, seatId })
           });
           const data = await res.json();
           alert(data.msg);

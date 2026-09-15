@@ -100,7 +100,7 @@ export async function updateSeatsAtomic(mutateFn) {
     const writeOpts = etag ? { onlyIfMatch: etag } : { onlyIfNew: true };
     const writeRes = await store.setJSON(SEATS_KEY, nextSeats, writeOpts);
 
-    if (writeRes.modified) {
+    if (!writeRes || writeRes.modified) {
       return result;
     }
     // etag가 바뀌었으면(다른 요청이 먼저 씀) 재시도
