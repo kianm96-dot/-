@@ -32,7 +32,7 @@ export default async (req) => {
     const openTime = new Date(openTimeStr);
     const now = new Date();
     if (now < openTime) {
-      const formatted = openTimeStr.replace("T", " ");
+      const formatted = openTimeStr.slice(0, 16).replace("T", " ");
       return jsonResponse({
         success: false,
         msg: "아직 신청 시간이 아닙니다.\n신청 시작 시간: " + formatted,
