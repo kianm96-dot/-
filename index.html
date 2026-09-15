@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E-트레인 좌석 선착순 예약</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Jua&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+      body {
+        font-family: 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+        margin: 0; padding: 15px;
+        background: linear-gradient(180deg, #EAF6FF 0%, #FDF6E8 100%);
+        min-height: 100vh;
+      }
+      .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 18px; box-shadow: 0 10px 30px rgba(27,75,102,0.10); }
+      .hidden { display: none !important; }
+      .page-title {
+        font-family: 'Jua', 'Noto Sans KR', sans-serif;
+        text-align: center; margin-top: 4px; margin-bottom: 0;
+        color: #1B4B66; font-size: 26px; letter-spacing: 0.5px;
+      }
+
+      /* 로그인 영역 */
+      .login-box { max-width: 380px; margin: 12px auto 30px; text-align: center; }
+      .mascot-wrap { display:flex; justify-content:center; margin-bottom: 6px; }
+      .mascot-wrap svg { animation: mascot-bob 3.2s ease-in-out infinite; }
+      @keyframes mascot-bob {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-6px); }
+      }
+      .hero-wrap { margin: 0 0 6px; }
+      .hero-img { width: 100%; border-radius: 16px; display: block; box-shadow: 0 6px 18px rgba(27,75,102,0.18); }
+      .welcome-text {
+        font-family: 'Jua', 'Noto Sans KR', sans-serif;
+        color: #1B4B66; font-size: 19px; margin: 6px 0 2px;
+      }
+      .welcome-sub { color: #6B8496; font-size: 14px; margin: 0 0 22px; }
+      .login-box input {
+        width: 100%; padding: 13px 18px; margin: 8px 0; box-sizing: border-box;
+        border: 2px solid #DCEAF2; border-radius: 999px; font-size: 15px;
+        background: #F7FBFD; color: #1B4B66; outline: none;
+        transition: border-color 0.15s ease, background 0.15s ease;
+      }
+      .login-box input::placeholder { color: #9FB6C4; }
+      .login-box input:focus { border-color: #FF6B4A; background: #ffffff; }
+      .login-box button {
+        width: 100%; padding: 14px; margin-top: 10px;
+        background: linear-gradient(180deg, #FF8064 0%, #FF6B4A 100%);
+        color: white; border: none; border-radius: 999px; font-size: 16px;
+        font-weight: 700; cursor: pointer; box-shadow: 0 6px 16px rgba(255,107,74,0.35);
+        transition: transform 0.12s ease, box-shadow 0.12s ease;
+      }
+      .login-box button:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(255,107,74,0.42); }
+      .login-box button:active { transform: translateY(0); }
+
+      /* 기차 메인배치도 그리드 */
+      .train-container { display: flex; gap: 15px; overflow-x: auto; padding-bottom: 15px; margin-top: 20px; }
+      .car { border: 2px solid #333; border-radius: 8px; background: #fafafa; min-width: 260px; padding: 8px; box-sizing: border-box; }
+      .car-title { text-align: center; font-weight: bold; padding: 8px 0; border-bottom: 2px solid #333; margin-bottom: 8px; background: #e0e0e0; }
+
+      .car-body { display: flex; justify-content: space-between; align-items: stretch; }
+      .side-col { display: flex; flex-direction: column; gap: 4px; width: 105px; }
+      .aisle { width: 30px; background: #eee; border-left: 1px dashed #ccc; border-right: 1px dashed #ccc; display: flex; align-items: center; justify-content: center; writing-mode: vertical-rl; font-size: 12px; color: #555; font-weight: bold; letter-spacing: 2px; }
+
+      .row-pair { display: flex; gap: 4px; }
+
+      /* 좌석 / 무대 / 휠체어석 버튼 스타일 */
+      .seat { flex: 1; height: 32px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; border-radius: 4px; border: 1px solid rgba(0,0,0,0.2); cursor: pointer; user-select: none; color: #fff; }
+      .stage { width: 100%; height: 34px; background-color: #fff3cd; border: 1px dashed #856404; color: #856404; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: bold; border-radius: 4px; margin: 2px 0; }
+      .wheelchair { width: 100%; height: 34px; background-color: #e2e3e5; border: 1px solid #6c757d; color: #383d41; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; border-radius: 4px; margin: 2px 0; }
+
+      /* 반별 색상 정의 */
+      .class-1 { background-color: #f44336; color: white; }
+      .class-2 { background-color: #ff9800; color: white; }
+      .class-3 { background-color: #fdd835; color: black; }
+      .class-4 { background-color: #4caf50; color: white; }
+      .class-5 { background-color: #2196f3; color: white; }
+      .class-6 { background-color: #9c27b0; color: white; }
+      .class-7 { background-color: #9e9e9e; color: white; }
+
+      /* 상태별 잠금 및 완료 처리 */
+      .seat.locked { background-color: #e0e0e0 !important; color: #a0a0a0 !important; cursor: not-allowed; border: 1px solid #ccc; position: relative; }
+      .seat.locked::after { content: '🔒'; font-size: 10px; position: absolute; right: 2px; bottom: 1px; }
+      .seat.booked { background-color: #333333 !important; color: #ffffff !important; cursor: not-allowed; text-decoration: line-through; }
+      .seat.mine { background-color: #333333 !important; color: #ffd54f !important; cursor: pointer; text-decoration: line-through; outline: 3px solid #ffd54f; outline-offset: 1px; }
+
+      .cancel-btn { padding: 6px 12px; background:#e53935; color:#fff; border:none; border-radius:6px; font-size:13px; font-weight:bold; cursor:pointer; margin-left:8px; }
+
+      /* 아래쪽 범례 */
+      .legend-bar { display: flex; gap: 8px; margin-top: 25px; justify-content: center; flex-wrap: wrap; }
+      .legend-item { padding: 6px 14px; border-radius: 4px; font-size: 13px; font-weight: bold; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <!-- 로그인 화면 -->
+      <div id="login-section" class="login-box">
+        <div class="hero-wrap">
+          <img src="/assets/hero-mascot.jpg" alt="E-트레인" class="hero-img">
+        </div>
+        <p class="welcome-sub" style="margin-top:14px;">학번(5자리)과 이름을 입력하고 입장해주세요</p>
+        <input type="text" id="studentId" placeholder="학번 예: 30705 (3학년 7반 5번)" maxlength="5">
+        <input type="text" id="name" placeholder="이름">
+        <button onclick="login()">좌석배치도 입장</button>
+      </div>
+
+      <!-- 로딩 문구 -->
+      <div id="loading" class="hidden" style="text-align:center; padding: 30px; font-weight:bold;">
+        좌석 배치도를 불러오는 중입니다...
+      </div>
+
+      <!-- 메인 예약 화면 -->
+      <div id="main-section" class="hidden">
+        <div style="display:flex; justify-content:space-between; align-items:center; background:#EAF6FF; padding:12px 20px; border-radius:14px; flex-wrap:wrap; gap:8px;">
+          <h3 id="user-info" style="margin:0; color:#1B4B66;"></h3>
+          <div id="my-booking-info" style="font-size:14px; color:#1B4B66;"></div>
+          <span style="font-size:13px; color:#6B8496;">
+            ※ 🔒 표시는 타 반 좌석으로 선택이 불가능합니다.
+            <a href="#" onclick="logout(); return false;" style="margin-left:10px; color:#FF6B4A;">다른 학생으로 입장</a>
+          </span>
+        </div>
+
+        <div class="train-container" id="train-map"></div>
+
+        <div class="legend-bar">
+          <div class="legend-item class-1">1반</div>
+          <div class="legend-item class-2">2반</div>
+          <div class="legend-item class-3">3반</div>
+          <div class="legend-item class-4">4반</div>
+          <div class="legend-item class-5">5반</div>
+          <div class="legend-item class-6">6반</div>
+          <div class="legend-item class-7">7반</div>
+        </div>
+      </div>
+    </div>
+
+    <script src="/shared/car-layouts.js"></script>
+    <script>
+      let currentStuId = '';
+      let currentName = '';
+
+      const SESSION_KEY = 'etrain_student_session';
+
+      function saveSession(id, name) {
+        try {
+          sessionStorage.setItem(SESSION_KEY, JSON.stringify({ id, name }));
+        } catch (e) { /* 저장 실패해도 예약 자체엔 지장 없음 */ }
+      }
+
+      function clearSession() {
+        try { sessionStorage.removeItem(SESSION_KEY); } catch (e) {}
+      }
+
+      function loadSession() {
+        try {
+          const raw = sessionStorage.getItem(SESSION_KEY);
+          return raw ? JSON.parse(raw) : null;
+        } catch (e) { return null; }
+      }
+
+      async function login() {
+        const id = document.getElementById("studentId").value.trim();
+        const name = document.getElementById("name").value.trim();
+        if (id.length !== 5 || isNaN(id) || !name) {
+          alert("5자리 학번(숫자)과 이름을 정확히 입력해주세요.");
+          return;
+        }
+        await enterWithCredentials(id, name);
+      }
+
+      async function enterWithCredentials(id, name) {
+        currentStuId = id;
+        currentName = name;
+
+        document.getElementById("login-section").classList.add("hidden");
+        document.getElementById("loading").classList.remove("hidden");
+
+        try {
+          const res = await fetch(`/api/seat-data?studentId=${encodeURIComponent(id)}`);
+          const data = await res.json();
+          if (!res.ok || data.error) {
+            alert("오류: " + (data.error || "좌석 정보를 불러올 수 없습니다."));
+            clearSession();
+            document.getElementById("loading").classList.add("hidden");
+            document.getElementById("login-section").classList.remove("hidden");
+            return;
+          }
+          saveSession(id, name);
+          renderTrainMap(data);
+        } catch (err) {
+          alert("오류: " + err.message);
+          document.getElementById("loading").classList.add("hidden");
+          document.getElementById("login-section").classList.remove("hidden");
+        }
+      }
+
+      function logout() {
+        if (!confirm('다른 학생으로 다시 입장하시겠습니까?')) return;
+        clearSession();
+        location.reload();
+      }
+
+      function renderTrainMap(res) {
+        document.getElementById("loading").classList.add("hidden");
+        document.getElementById("main-section").classList.remove("hidden");
+        document.getElementById("user-info").innerText = `${currentName} 학생 (반: ${res.studentClass}반 좌석 활성화)`;
+
+        const bookingInfo = document.getElementById("my-booking-info");
+        if (res.myBookedSeatId) {
+          bookingInfo.innerHTML = `내 예약 좌석: <b>${res.myBookedSeatId}</b>` +
+            `<button class="cancel-btn" onclick="cancelMySeat('${res.myBookedSeatId}')">예약 취소</button>`;
+        } else {
+          bookingInfo.innerHTML = '';
+        }
+
+        const trainMap = document.getElementById("train-map");
+        trainMap.innerHTML = '';
+
+        [2, 3, 4, 7].forEach(carNum => {
+          const carData = CAR_LAYOUTS[carNum];
+          const carDiv = document.createElement("div");
+          carDiv.className = "car";
+
+          let html = `<div class="car-title">${carData.title}</div><div class="car-body">`;
+
+          html += `<div class="side-col">`;
+          carData.left.forEach(row => html += renderRow(carNum, row, res));
+          html += `</div>`;
+
+          html += `<div class="aisle">${carData.title}</div>`;
+
+          html += `<div class="side-col">`;
+          carData.right.forEach(row => html += renderRow(carNum, row, res));
+          html += `</div>`;
+
+          html += `</div>`;
+          carDiv.innerHTML = html;
+          trainMap.appendChild(carDiv);
+        });
+      }
+
+      function renderRow(carNum, row, res) {
+        if (row === "STAGE") return `<div class="stage">무대</div>`;
+        if (typeof row === "string" && row.startsWith("WHEELCHAIR")) {
+          const num = row.split("_")[1];
+          return `<div class="wheelchair">휠체어고정석 ${num}</div>`;
+        }
+
+        let rowHtml = `<div class="row-pair">`;
+        row.forEach(seatNum => {
+          const seatId = `${carNum}호차-${seatNum}`;
+          const seatInfo = res.seats[seatId];
+
+          if (!seatInfo) {
+            rowHtml += `<div class="seat locked">-</div>`;
+            return;
+          }
+
+          const assignedClass = seatInfo.assignedClass;
+          const isMine = (assignedClass === res.studentClass);
+          const isBooked = (seatInfo.status === '예약완료');
+          const isMyBookedSeat = (seatId === res.myBookedSeatId);
+
+          let cssClass = `seat class-${assignedClass}`;
+          let clickAttr = '';
+
+          if (isMyBookedSeat) {
+            cssClass += ' mine';
+            clickAttr = `onclick="cancelMySeat('${seatId}')" title="클릭하면 예약을 취소합니다"`;
+          } else if (isBooked) {
+            cssClass += ' booked';
+          } else if (!isMine) {
+            cssClass += ' locked';
+          } else {
+            clickAttr = `onclick="clickSeat('${seatId}')"`;
+          }
+
+          rowHtml += `<div class="${cssClass}" ${clickAttr}>${seatNum}</div>`;
+        });
+        rowHtml += `</div>`;
+        return rowHtml;
+      }
+
+      async function clickSeat(seatId) {
+        if (!confirm(`[${seatId}] 좌석을 선착순 예약하시겠습니까?`)) return;
+        document.body.style.pointerEvents = "none";
+        try {
+          const res = await fetch('/api/book-seat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ studentId: currentStuId, name: currentName, seatId })
+          });
+          const data = await res.json();
+          alert(data.msg);
+          // 성공/실패 상관없이 새로고침해서 방금 바뀐(다른 사람이 채간) 좌석 현황을 바로 보여준다.
+          location.reload();
+        } catch (err) {
+          alert("오류: " + err.message);
+          document.body.style.pointerEvents = "auto";
+        }
+      }
+
+      async function cancelMySeat(seatId) {
+        if (!confirm(`[${seatId}] 예약을 취소하시겠습니까?\n취소 후 다른 좌석을 다시 선택할 수 있습니다.`)) return;
+        document.body.style.pointerEvents = "none";
+        try {
+          const res = await fetch('/api/cancel-own-seat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ studentId: currentStuId, seatId })
+          });
+          const data = await res.json();
+          alert(data.msg);
+          location.reload();
+        } catch (err) {
+          alert("오류: " + err.message);
+          document.body.style.pointerEvents = "auto";
+        }
+      }
+
+      // 예약/취소 후 새로고침되어도 로그인 화면으로 돌아가지 않고
+      // 저장된 학번/이름으로 자동으로 좌석 화면에 다시 진입한다.
+      (function tryAutoEnter() {
+        const session = loadSession();
+        if (session && session.id && session.name) {
+          enterWithCredentials(session.id, session.name);
+        }
+      })();
+    </script>
+  </body>
+</html>
