@@ -47,7 +47,7 @@ export function generateSeats() {
     seats.push(makeSeat("4호차-" + i, 4, cls));
   }
 
-  // 7호차 (50석) - 6반(1~22번), 7반(23~50번)
+  // 7호차 (50석) - 6반(1~22번, 24번), 7반(23번, 25~50번)
   for (let i = 1; i <= 50; i++) {
     const cls = i >= 1 && i <= 22 ? 6 : 7;
     seats.push(makeSeat("7호차-" + i, 7, cls));
