@@ -74,7 +74,10 @@
         <div style="display:flex; justify-content:space-between; align-items:center; background:#e3f2fd; padding:12px 20px; border-radius:8px; flex-wrap:wrap; gap:8px;">
           <h3 id="user-info" style="margin:0; color:#0d47a1;"></h3>
           <div id="my-booking-info" style="font-size:14px; color:#0d47a1;"></div>
-          <span style="font-size:13px; color:#555;">※ 🔒 표시는 타 반 좌석으로 선택이 불가능합니다.</span>
+          <span style="font-size:13px; color:#555;">
+            ※ 🔒 표시는 타 반 좌석으로 선택이 불가능합니다.
+            <a href="#" onclick="logout(); return false;" style="margin-left:10px; color:#1976d2;">다른 학생으로 입장</a>
+          </span>
         </div>
 
         <div class="train-container" id="train-map"></div>
@@ -96,6 +99,25 @@
       let currentStuId = '';
       let currentName = '';
 
+      const SESSION_KEY = 'etrain_student_session';
+
+      function saveSession(id, name) {
+        try {
+          sessionStorage.setItem(SESSION_KEY, JSON.stringify({ id, name }));
+        } catch (e) { /* 저장 실패해도 예약 자체엔 지장 없음 */ }
+      }
+
+      function clearSession() {
+        try { sessionStorage.removeItem(SESSION_KEY); } catch (e) {}
+      }
+
+      function loadSession() {
+        try {
+          const raw = sessionStorage.getItem(SESSION_KEY);
+          return raw ? JSON.parse(raw) : null;
+        } catch (e) { return null; }
+      }
+
       async function login() {
         const id = document.getElementById("studentId").value.trim();
         const name = document.getElementById("name").value.trim();
@@ -103,6 +125,10 @@
           alert("5자리 학번(숫자)과 이름을 정확히 입력해주세요.");
           return;
         }
+        await enterWithCredentials(id, name);
+      }
+
+      async function enterWithCredentials(id, name) {
         currentStuId = id;
         currentName = name;
 
@@ -114,16 +140,24 @@
           const data = await res.json();
           if (!res.ok || data.error) {
             alert("오류: " + (data.error || "좌석 정보를 불러올 수 없습니다."));
+            clearSession();
             document.getElementById("loading").classList.add("hidden");
             document.getElementById("login-section").classList.remove("hidden");
             return;
           }
+          saveSession(id, name);
           renderTrainMap(data);
         } catch (err) {
           alert("오류: " + err.message);
           document.getElementById("loading").classList.add("hidden");
           document.getElementById("login-section").classList.remove("hidden");
         }
+      }
+
+      function logout() {
+        if (!confirm('다른 학생으로 다시 입장하시겠습니까?')) return;
+        clearSession();
+        location.reload();
       }
 
       function renderTrainMap(res) {
@@ -250,6 +284,15 @@
           document.body.style.pointerEvents = "auto";
         }
       }
+
+      // 예약/취소 후 새로고침되어도 로그인 화면으로 돌아가지 않고
+      // 저장된 학번/이름으로 자동으로 좌석 화면에 다시 진입한다.
+      (function tryAutoEnter() {
+        const session = loadSession();
+        if (session && session.id && session.name) {
+          enterWithCredentials(session.id, session.name);
+        }
+      })();
     </script>
   </body>
 </html>
