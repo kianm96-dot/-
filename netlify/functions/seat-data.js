@@ -1,4 +1,4 @@
-import { getSeats, getOpenTime, jsonResponse } from "../lib/store.mjs";
+import { getAllSeats, getOpenTime, getStudentSeatId, jsonResponse } from "../lib/store.mjs";
 
 export default async (req) => {
   const url = new URL(req.url);
@@ -9,7 +9,7 @@ export default async (req) => {
   }
 
   const stuClass = parseInt(studentId.substring(1, 3), 10);
-  const seats = await getSeats();
+  const seats = await getAllSeats();
 
   if (!seats.length) {
     return jsonResponse({ error: "좌석 데이터가 아직 생성되지 않았습니다. 관리자에게 문의하세요." }, 404);
@@ -23,10 +23,10 @@ export default async (req) => {
     };
   });
 
-  const mySeat = seats.find((s) => s.studentId === studentId && s.status === "예약완료");
-  const myBookedSeatId = mySeat ? mySeat.seatId : "";
-
-  const openTime = await getOpenTime();
+  const [openTime, myBookedSeatId] = await Promise.all([
+    getOpenTime(),
+    getStudentSeatId(studentId),
+  ]);
 
   return jsonResponse({ seats: seatMap, studentClass: stuClass, openTime, myBookedSeatId });
 };

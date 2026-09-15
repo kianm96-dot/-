@@ -1,11 +1,16 @@
 import { getStore } from "@netlify/blobs";
 
-const SEATS_KEY = "seats.json";
+const SEAT_PREFIX = "seat:";
+const STUDENT_PREFIX = "student:";
 const OPEN_TIME_KEY = "open-time.json";
-const MAX_RETRY = 5;
+const SEAT_WRITE_RETRY = 8;
 
 export function seatsStore() {
-  return getStore("erain-seats");
+  return getStore({ name: "erain-seats", consistency: "strong" });
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // ---------------------------------------------------------------------
@@ -58,54 +63,114 @@ function makeSeat(seatId, car, cls) {
 }
 
 // ---------------------------------------------------------------------
-// 좌석 데이터 읽기 / 쓰기 (ETag 기반 낙관적 락으로 동시성 처리)
+// 좌석: 한 좌석 = 하나의 독립된 Blob (seat:{seatId})
+// 이렇게 분리해두면, 서로 다른 좌석을 동시에 예약하는 학생들끼리는
+// 절대 충돌하지 않고, "정확히 같은 좌석"을 동시에 클릭한 경우에만
+// 자동 재시도로 처리됩니다.
 // ---------------------------------------------------------------------
-export async function getSeatsWithMeta() {
+export async function getSeat(seatId) {
   const store = seatsStore();
-  const entry = await store.getWithMetadata(SEATS_KEY, { type: "json" });
-  if (!entry || !entry.data) {
-    return { seats: null, etag: null };
-  }
-  return { seats: entry.data, etag: entry.etag };
+  return await store.get(SEAT_PREFIX + seatId, { type: "json" });
 }
 
-export async function getSeats() {
-  const { seats } = await getSeatsWithMeta();
-  return seats || [];
+export async function setSeatForce(seatId, seatObj) {
+  const store = seatsStore();
+  await store.setJSON(SEAT_PREFIX + seatId, seatObj);
 }
 
-export async function setSeatsInitial(seats) {
+export async function getAllSeats() {
   const store = seatsStore();
-  await store.setJSON(SEATS_KEY, seats);
+  const listRes = await store.list({ prefix: SEAT_PREFIX });
+  const blobs = (listRes && listRes.blobs) || [];
+  if (!blobs.length) return [];
+  const seats = await Promise.all(blobs.map((b) => store.get(b.key, { type: "json" })));
+  return seats.filter(Boolean);
 }
 
 /**
- * mutateFn(seats) -> { seats: 수정된 배열, result: 반환할 결과 } 를 리턴해야 함.
- * ETag 충돌 시 최대 MAX_RETRY 회 재시도한다 (동시 예약 경합 처리).
+ * mutateFn(seat) -> { seat: 수정된 좌석객체, result: 반환할 결과 } 를 리턴해야 함.
+ * result.__noChange 가 true 이면 저장 없이 바로 result 를 반환한다.
+ * ETag 충돌(정확히 같은 좌석을 동시에 클릭) 시 짧은 대기 후 재시도한다.
  */
-export async function updateSeatsAtomic(mutateFn) {
+export async function updateSeatAtomic(seatId, mutateFn) {
   const store = seatsStore();
-  for (let attempt = 0; attempt < MAX_RETRY; attempt++) {
-    const entry = await store.getWithMetadata(SEATS_KEY, { type: "json" });
-    const seats = (entry && entry.data) || [];
-    const etag = entry ? entry.etag : null;
+  const key = SEAT_PREFIX + seatId;
 
-    const { seats: nextSeats, result } = mutateFn(seats);
+  for (let attempt = 0; attempt < SEAT_WRITE_RETRY; attempt++) {
+    const entry = await store.getWithMetadata(key, { type: "json" });
+    if (!entry || !entry.data) {
+      return { success: false, msg: "존재하지 않는 좌석입니다." };
+    }
+
+    const { seat: nextSeat, result } = mutateFn(entry.data);
 
     if (!result || result.__noChange) {
       if (result) delete result.__noChange;
       return result;
     }
 
-    const writeOpts = etag ? { onlyIfMatch: etag } : { onlyIfNew: true };
-    const writeRes = await store.setJSON(SEATS_KEY, nextSeats, writeOpts);
-
+    const writeRes = await store.setJSON(key, nextSeat, { onlyIfMatch: entry.etag });
     if (!writeRes || writeRes.modified) {
       return result;
     }
-    // etag가 바뀌었으면(다른 요청이 먼저 씀) 재시도
+    // 정확히 같은 좌석에 동시 요청이 들어온 경우 -> 잠깐 대기 후 재시도
+    await sleep(25 + Math.random() * 60);
   }
-  return { success: false, msg: "접속자가 많아 처리가 지연되었습니다. 다시 시도해주세요." };
+
+  return { success: false, msg: "이 좌석에 신청이 몰리고 있어요. 잠시 후 다시 시도해주세요." };
+}
+
+// ---------------------------------------------------------------------
+// 학번당 1좌석 제한: student:{studentId} -> seatId
+// onlyIfNew 조건부 쓰기로 "동시에 두 번 예약 시도"를 원천 차단한다.
+// ---------------------------------------------------------------------
+export async function claimStudentSeat(studentId, seatId) {
+  const store = seatsStore();
+  const res = await store.set(STUDENT_PREFIX + studentId, seatId, { onlyIfNew: true });
+  return !!(res && res.modified);
+}
+
+export async function releaseStudentClaim(studentId) {
+  const store = seatsStore();
+  try {
+    await store.delete(STUDENT_PREFIX + studentId);
+  } catch (e) {
+    // 이미 없는 경우 등은 무시
+  }
+}
+
+export async function getStudentSeatId(studentId) {
+  const store = seatsStore();
+  const val = await store.get(STUDENT_PREFIX + studentId);
+  return val || "";
+}
+
+// 관리자 수동 배정용: 무조건 덮어쓰기
+export async function setStudentClaim(studentId, seatId) {
+  const store = seatsStore();
+  await store.set(STUDENT_PREFIX + studentId, seatId);
+}
+
+// ---------------------------------------------------------------------
+// 전체 초기화: 기존 seat/student 데이터를 모두 지우고 좌석을 새로 생성
+// ---------------------------------------------------------------------
+export async function resetAllSeats() {
+  const store = seatsStore();
+
+  const [seatList, studentList] = await Promise.all([
+    store.list({ prefix: SEAT_PREFIX }),
+    store.list({ prefix: STUDENT_PREFIX }),
+  ]);
+
+  const seatKeys = ((seatList && seatList.blobs) || []).map((b) => b.key);
+  const studentKeys = ((studentList && studentList.blobs) || []).map((b) => b.key);
+
+  await Promise.all([...seatKeys, ...studentKeys].map((k) => store.delete(k)));
+
+  const seats = generateSeats();
+  await Promise.all(seats.map((s) => store.setJSON(SEAT_PREFIX + s.seatId, s)));
+
+  return seats.length;
 }
 
 // ---------------------------------------------------------------------
@@ -128,7 +193,6 @@ export async function setOpenTime(openTime) {
 export function isAdminAuthorized(req) {
   const expected = process.env.ADMIN_PASSWORD;
   if (!expected) {
-    // 환경변수 미설정 시 안전을 위해 항상 거부
     return false;
   }
   const provided =

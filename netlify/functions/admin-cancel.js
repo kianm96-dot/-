@@ -1,4 +1,10 @@
-import { updateSeatsAtomic, isAdminAuthorized, jsonResponse } from "../lib/store.mjs";
+import {
+  getSeat,
+  setSeatForce,
+  releaseStudentClaim,
+  isAdminAuthorized,
+  jsonResponse,
+} from "../lib/store.mjs";
 
 export default async (req) => {
   if (!isAdminAuthorized(req)) {
@@ -20,15 +26,15 @@ export default async (req) => {
     return jsonResponse({ success: false, msg: "좌석번호를 입력해주세요." }, 400);
   }
 
-  const result = await updateSeatsAtomic((seats) => {
-    const idx = seats.findIndex((s) => s.seatId === seatId);
-    if (idx === -1) {
-      return { seats, result: { success: false, msg: "좌석을 찾을 수 없습니다.", __noChange: true } };
-    }
-    const nextSeats = seats.slice();
-    nextSeats[idx] = { ...seats[idx], status: "", studentId: "", studentName: "" };
-    return { seats: nextSeats, result: { success: true, msg: seatId + " 예약 삭제 완료!" } };
-  });
+  const seat = await getSeat(seatId);
+  if (!seat) {
+    return jsonResponse({ success: false, msg: "좌석을 찾을 수 없습니다." });
+  }
 
-  return jsonResponse(result);
+  if (seat.studentId) {
+    await releaseStudentClaim(seat.studentId);
+  }
+  await setSeatForce(seatId, { ...seat, status: "", studentId: "", studentName: "" });
+
+  return jsonResponse({ success: true, msg: seatId + " 예약 삭제 완료!" });
 };

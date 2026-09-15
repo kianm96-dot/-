@@ -1,4 +1,9 @@
-import { updateSeatsAtomic, jsonResponse } from "../lib/store.mjs";
+import {
+  getStudentSeatId,
+  releaseStudentClaim,
+  updateSeatAtomic,
+  jsonResponse,
+} from "../lib/store.mjs";
 
 export default async (req) => {
   if (req.method !== "POST") {
@@ -19,19 +24,22 @@ export default async (req) => {
     return jsonResponse({ success: false, msg: "입력값을 확인해주세요." }, 400);
   }
 
-  const result = await updateSeatsAtomic((seats) => {
-    const idx = seats.findIndex((s) => s.seatId === seatId);
-    if (idx === -1) {
-      return { seats, result: { success: false, msg: "존재하지 않는 좌석입니다.", __noChange: true } };
-    }
-    const seat = seats[idx];
+  const myCurrentSeatId = await getStudentSeatId(studentId);
+  if (myCurrentSeatId !== seatId) {
+    return jsonResponse({ success: false, msg: "본인이 예약한 좌석만 취소할 수 있습니다." });
+  }
+
+  const result = await updateSeatAtomic(seatId, (seat) => {
     if (seat.status !== "예약완료" || seat.studentId !== studentId) {
-      return { seats, result: { success: false, msg: "본인이 예약한 좌석만 취소할 수 있습니다.", __noChange: true } };
+      return { seat, result: { success: false, msg: "본인이 예약한 좌석만 취소할 수 있습니다.", __noChange: true } };
     }
-    const nextSeats = seats.slice();
-    nextSeats[idx] = { ...seat, status: "", studentId: "", studentName: "" };
-    return { seats: nextSeats, result: { success: true, msg: seatId + " 예약이 취소되었습니다." } };
+    const nextSeat = { ...seat, status: "", studentId: "", studentName: "" };
+    return { seat: nextSeat, result: { success: true, msg: seatId + " 예약이 취소되었습니다." } };
   });
+
+  if (result && result.success) {
+    await releaseStudentClaim(studentId);
+  }
 
   return jsonResponse(result);
 };

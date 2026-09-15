@@ -1,4 +1,10 @@
-import { getOpenTime, updateSeatsAtomic, jsonResponse } from "../lib/store.mjs";
+import {
+  getOpenTime,
+  claimStudentSeat,
+  releaseStudentClaim,
+  updateSeatAtomic,
+  jsonResponse,
+} from "../lib/store.mjs";
 
 export default async (req) => {
   if (req.method !== "POST") {
@@ -36,37 +42,34 @@ export default async (req) => {
 
   const stuClass = parseInt(studentId.substring(1, 3), 10);
 
-  const result = await updateSeatsAtomic((seats) => {
-    // 이미 예약한 학번인지 확인
-    const already = seats.find((s) => s.studentId === studentId);
-    if (already) {
-      return { seats, result: { success: false, msg: "이미 예약 완료된 내역이 있습니다.", __noChange: true } };
-    }
+  // 1) 학번당 1좌석만 예약 가능하도록 먼저 선점(claim) 시도.
+  //    이 단계는 학번별로 독립적인 키라서, 다른 학생과는 절대 충돌하지 않는다.
+  const claimed = await claimStudentSeat(studentId, seatId);
+  if (!claimed) {
+    return jsonResponse({ success: false, msg: "이미 예약 완료된 내역이 있습니다." });
+  }
 
-    const idx = seats.findIndex((s) => s.seatId === seatId);
-    if (idx === -1) {
-      return { seats, result: { success: false, msg: "존재하지 않는 좌석입니다.", __noChange: true } };
-    }
-
-    const seat = seats[idx];
+  // 2) 실제 좌석에 대해 원자적으로 배정 시도.
+  //    이 단계도 좌석별로 독립된 키라서, "정확히 같은 좌석"을 동시에 누른
+  //    경우에만 충돌하고 자동 재시도로 처리된다.
+  const result = await updateSeatAtomic(seatId, (seat) => {
     if (seat.assignedClass === 0) {
-      return { seats, result: { success: false, msg: "무대 및 휠체어석은 예약 불가합니다.", __noChange: true } };
+      return { seat, result: { success: false, msg: "무대 및 휠체어석은 예약 불가합니다.", __noChange: true } };
     }
     if (seat.assignedClass !== stuClass) {
-      return { seats, result: { success: false, msg: "본인 반 좌석만 예약 가능합니다.", __noChange: true } };
+      return { seat, result: { success: false, msg: "본인 반 좌석만 예약 가능합니다.", __noChange: true } };
     }
     if (seat.status === "예약완료") {
-      return { seats, result: { success: false, msg: "이미 마감된 좌석입니다.", __noChange: true } };
+      return { seat, result: { success: false, msg: "이미 마감된 좌석입니다.", __noChange: true } };
     }
-
-    const nextSeats = seats.slice();
-    nextSeats[idx] = { ...seat, status: "예약완료", studentId, studentName: name };
-
-    return {
-      seats: nextSeats,
-      result: { success: true, msg: seatId + " 예약 완료!" },
-    };
+    const nextSeat = { ...seat, status: "예약완료", studentId, studentName: name };
+    return { seat: nextSeat, result: { success: true, msg: seatId + " 예약 완료!" } };
   });
 
-  return jsonResponse(result);
+  if (!result || !result.success) {
+    // 좌석 확보에 실패했으면, 선점해뒀던 학번 슬롯을 반납해서 다시 시도할 수 있게 한다.
+    await releaseStudentClaim(studentId);
+  }
+
+  return jsonResponse(result || { success: false, msg: "예약 처리 중 오류가 발생했습니다." });
 };

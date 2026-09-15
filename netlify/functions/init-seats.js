@@ -1,4 +1,4 @@
-import { generateSeats, setSeatsInitial, isAdminAuthorized, jsonResponse } from "../lib/store.mjs";
+import { resetAllSeats, isAdminAuthorized, jsonResponse } from "../lib/store.mjs";
 
 export default async (req) => {
   if (!isAdminAuthorized(req)) {
@@ -8,11 +8,10 @@ export default async (req) => {
     return jsonResponse({ success: false, msg: "잘못된 요청입니다." }, 405);
   }
 
-  const seats = generateSeats();
-  await setSeatsInitial(seats);
+  const count = await resetAllSeats();
 
   return jsonResponse({
     success: true,
-    msg: "전체 호차 좌석 배치 DB 재생성 완료! 총 " + seats.length + "개 좌석이 설정되었습니다.",
+    msg: "전체 호차 좌석 배치 DB 재생성 완료! 총 " + count + "개 좌석이 설정되었습니다.",
   });
 };
