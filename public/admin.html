@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>E-트레인 관리자 현황판</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
       body { font-family: 'Malgun Gothic', sans-serif; background-color: #f0f2f5; margin: 0; padding: 15px; }
       .container { max-width: 1300px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
@@ -100,18 +101,46 @@
           </div>
         </div>
 
-        <div style="font-size:13px; color:#555; text-align:right;">좌석을 클릭하면 수동 배정 / 삭제할 수 있습니다.</div>
-        <div class="train-container" id="train-map"></div>
+        <div class="panel-row" style="margin-bottom:14px;">
+          <button class="btn btn-primary" id="tabBtnSeat" onclick="switchTab('seat')">🚉 좌석 배치도</button>
+          <button class="btn btn-gray" id="tabBtnRoster" onclick="switchTab('roster')">📋 반별 신청 현황</button>
+        </div>
 
-        <div class="legend-bar">
-          <div class="legend-item class-1">1반</div>
-          <div class="legend-item class-2">2반</div>
-          <div class="legend-item class-3">3반</div>
-          <div class="legend-item class-4">4반</div>
-          <div class="legend-item class-5">5반</div>
-          <div class="legend-item class-6">6반</div>
-          <div class="legend-item class-7">7반</div>
-          <div class="legend-item class-0">무대/휠체어</div>
+        <div id="tab-seat">
+          <div style="font-size:13px; color:#555; text-align:right;">좌석을 클릭하면 수동 배정 / 삭제할 수 있습니다.</div>
+          <div class="train-container" id="train-map"></div>
+
+          <div class="legend-bar">
+            <div class="legend-item class-1">1반</div>
+            <div class="legend-item class-2">2반</div>
+            <div class="legend-item class-3">3반</div>
+            <div class="legend-item class-4">4반</div>
+            <div class="legend-item class-5">5반</div>
+            <div class="legend-item class-6">6반</div>
+            <div class="legend-item class-7">7반</div>
+            <div class="legend-item class-0">무대/휠체어</div>
+          </div>
+        </div>
+
+        <div id="tab-roster" class="hidden">
+          <div class="panel">
+            <h4>👥 학생 명단 관리</h4>
+            <div style="font-size:13px; color:#555; margin-bottom:6px;">
+              한 줄에 학생 1명씩, "학번 이름" 형식으로 붙여넣어주세요. (예: 30715 홍길동) — 엑셀에서 A열(학번)·B열(이름) 두 칸을 드래그해서 복사(Ctrl+C) 후 아래 칸에 붙여넣어도(Ctrl+V) 인식됩니다.
+              또는 아래 "파일 선택"으로 엑셀(.xlsx) 파일을 그대로 올려도 돼요 (A열=학번, B열=이름).
+            </div>
+            <div class="panel-row" style="margin-bottom:6px;">
+              <input type="file" id="rosterFile" accept=".xlsx,.xls,.csv,.txt" onchange="loadRosterFile(this)">
+            </div>
+            <textarea id="rosterText" rows="4" style="width:100%; box-sizing:border-box; padding:8px; border:1px solid #ccc; border-radius:6px; font-size:13px; font-family:inherit;" placeholder="30701 김민준&#10;30702 이서연&#10;..."></textarea>
+            <div class="panel-row" style="margin-top:8px;">
+              <button class="btn btn-primary" onclick="saveRoster()">명단 저장</button>
+              <button class="btn btn-danger" onclick="clearRoster()">명단 전체 삭제</button>
+              <span id="rosterStatus" style="font-size:13px; color:#555;"></span>
+            </div>
+          </div>
+
+          <div id="classTablesBox"></div>
         </div>
       </div>
     </div>
@@ -173,11 +202,171 @@
             ? ('현재 설정(한국시간): ' + data.openTime.slice(0, 16).replace('T', ' '))
             : '현재 설정: 없음(즉시 오픈)';
           if (data.openTime) document.getElementById('openTimeInput').value = data.openTime.slice(0, 16);
+          renderClassTables(data);
           renderTrainMap(data);
           return true;
         } catch (err) {
           alert('오류: ' + err.message);
           return false;
+        }
+      }
+
+      function switchTab(tab) {
+        const seatTab = document.getElementById('tab-seat');
+        const rosterTab = document.getElementById('tab-roster');
+        const btnSeat = document.getElementById('tabBtnSeat');
+        const btnRoster = document.getElementById('tabBtnRoster');
+        if (tab === 'roster') {
+          seatTab.classList.add('hidden');
+          rosterTab.classList.remove('hidden');
+          btnRoster.classList.remove('btn-gray'); btnRoster.classList.add('btn-primary');
+          btnSeat.classList.remove('btn-primary'); btnSeat.classList.add('btn-gray');
+        } else {
+          rosterTab.classList.add('hidden');
+          seatTab.classList.remove('hidden');
+          btnSeat.classList.remove('btn-gray'); btnSeat.classList.add('btn-primary');
+          btnRoster.classList.remove('btn-primary'); btnRoster.classList.add('btn-gray');
+        }
+      }
+
+      function renderClassTables(data) {
+        const box = document.getElementById('classTablesBox');
+        const roster = data.roster || [];
+        const bookedMap = data.bookedMap || {};
+
+        document.getElementById('rosterStatus').innerText = roster.length
+          ? `현재 등록된 전체 명단: ${roster.length}명`
+          : '';
+
+        if (roster.length === 0) {
+          box.innerHTML = '<div style="font-size:13px; color:#888; padding:10px;">아직 등록된 명단이 없습니다. 위에 학번/이름을 붙여넣거나 엑셀 파일을 올리고 저장해주세요.</div>';
+          return;
+        }
+
+        // 반(학번 2~3번째 자리) 기준으로 그룹핑
+        const groups = {};
+        roster.forEach((s) => {
+          const cls = s.studentId.substring(1, 3);
+          if (!groups[cls]) groups[cls] = [];
+          groups[cls].push(s);
+        });
+        const classKeys = Object.keys(groups).sort();
+
+        let html = `<div style="overflow-x:auto;">
+          <div style="display:grid; grid-template-columns:repeat(7, minmax(150px, 1fr)); gap:8px; min-width:1050px;">`;
+        classKeys.forEach((cls) => {
+          const list = groups[cls].slice().sort((a, b) => a.studentId.localeCompare(b.studentId));
+          const appliedCount = list.filter((s) => bookedMap[s.studentId]).length;
+
+          html += `<div style="background:#fff; border:1px solid #ddd; border-radius:6px; padding:6px;">
+            <h4 style="margin:0 0 4px 0; color:#0d47a1; font-size:13px; text-align:center;">${parseInt(cls, 10)}반 (${appliedCount}/${list.length})</h4>
+            <table style="width:100%; border-collapse:collapse; font-size:11px;">
+              <thead>
+                <tr style="border-bottom:1px solid #eee; text-align:left;">
+                  <th style="padding:2px 3px;">학번</th>
+                  <th style="padding:2px 3px;">이름</th>
+                  <th style="padding:2px 3px;">상태</th>
+                </tr>
+              </thead>
+              <tbody>`;
+          list.forEach((s) => {
+            const seatId = bookedMap[s.studentId];
+            const statusHtml = seatId
+              ? `<span style="color:#2e7d32; font-weight:bold;">${escapeHtml(seatId)}</span>`
+              : `<span style="color:#c62828; font-weight:bold;">미신청</span>`;
+            html += `<tr style="border-bottom:1px solid #f5f5f5;">
+                <td style="padding:2px 3px;">${escapeHtml(s.studentId)}</td>
+                <td style="padding:2px 3px;">${escapeHtml(s.name)}</td>
+                <td style="padding:2px 3px;">${statusHtml}</td>
+              </tr>`;
+          });
+          html += `</tbody></table></div>`;
+        });
+        html += `</div></div>`;
+        box.innerHTML = html;
+      }
+
+      function loadRosterFile(input) {
+        const file = input.files && input.files[0];
+        if (!file) return;
+        const name = file.name.toLowerCase();
+
+        if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            try {
+              const data = new Uint8Array(e.target.result);
+              const workbook = XLSX.read(data, { type: 'array' });
+              const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+              // A열/B열 값을 그대로 배열의 배열로 가져온다 (헤더 유무 상관없이 처리)
+              const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+
+              const lines = [];
+              rows.forEach((row) => {
+                const a = row[0] != null ? String(row[0]).trim() : '';
+                const b = row[1] != null ? String(row[1]).trim() : '';
+                if (/^\d{5}$/.test(a) && b) {
+                  lines.push(a + ' ' + b);
+                }
+                // 학번 형식(5자리 숫자)이 아닌 행은 헤더 등으로 보고 자동으로 건너뜀
+              });
+
+              if (!lines.length) {
+                alert('엑셀에서 학번(5자리 숫자)/이름 형식의 데이터를 찾지 못했어요.\nA열=학번, B열=이름으로 되어있는지 확인해주세요.');
+                return;
+              }
+              document.getElementById('rosterText').value = lines.join('\n');
+            } catch (err) {
+              alert('엑셀 파일을 읽는 중 오류가 발생했습니다: ' + err.message);
+            }
+          };
+          reader.onerror = () => alert('파일을 읽는 중 오류가 발생했습니다.');
+          reader.readAsArrayBuffer(file);
+          return;
+        }
+
+        // .csv / .txt 는 텍스트로 그대로 읽기
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          document.getElementById('rosterText').value = e.target.result;
+        };
+        reader.onerror = () => alert('파일을 읽는 중 오류가 발생했습니다.');
+        reader.readAsText(file, 'utf-8');
+      }
+
+      async function clearRoster() {
+        if (!confirm('등록된 학생 명단을 전체 삭제하시겠습니까?\n(좌석 예약 기록은 그대로 남습니다)')) return;
+        try {
+          const res = await fetch('/api/student-roster', {
+            method: 'POST',
+            headers: adminHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ clear: true })
+          });
+          const data = await res.json();
+          alert(data.msg);
+          if (data.success) loadAdminData();
+        } catch (err) {
+          alert('오류: ' + err.message);
+        }
+      }
+
+      async function saveRoster() {
+        const text = document.getElementById('rosterText').value;
+        if (!text.trim()) { alert('명단을 입력해주세요.'); return; }
+        try {
+          const res = await fetch('/api/student-roster', {
+            method: 'POST',
+            headers: adminHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ text })
+          });
+          const data = await res.json();
+          alert(data.msg);
+          if (data.success) {
+            document.getElementById('rosterText').value = '';
+            loadAdminData();
+          }
+        } catch (err) {
+          alert('오류: ' + err.message);
         }
       }
 

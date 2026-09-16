@@ -3,6 +3,7 @@ import { getStore } from "@netlify/blobs";
 const SEAT_PREFIX = "seat:";
 const STUDENT_PREFIX = "student:";
 const OPEN_TIME_KEY = "open-time.json";
+const ROSTER_KEY = "student-roster.json";
 const SNAPSHOT_KEY = "seats-snapshot.json";
 const SEAT_WRITE_RETRY = 8;
 const SNAPSHOT_WRITE_RETRY = 3;
@@ -47,11 +48,11 @@ export function generateSeats() {
     seats.push(makeSeat("4호차-" + i, 4, cls));
   }
 
-// 7호차 (50석) - 6반(1~22번, 24번), 7반(23번, 25~50번)
-for (let i = 1; i <= 50; i++) {
-  const cls = (i <= 22 || i === 24) ? 6 : 7;
-  seats.push(makeSeat("7호차-" + i, 7, cls));
-}
+  // 7호차 (50석) - 6반(1~22번), 7반(23~50번)
+  for (let i = 1; i <= 50; i++) {
+    const cls = i >= 1 && i <= 22 ? 6 : 7;
+    seats.push(makeSeat("7호차-" + i, 7, cls));
+  }
 
   return seats;
 }
@@ -221,6 +222,20 @@ export async function setOpenTime(openTime) {
 }
 
 // ---------------------------------------------------------------------
+// 반별 전체 인원수 (관리자가 입력) - 신청완료/미신청 통계 계산용
+// ---------------------------------------------------------------------
+export async function getClassRoster() {
+  const store = seatsStore();
+  const data = await store.get(CLASS_ROSTER_KEY, { type: "json", consistency: "strong" });
+  return (data && data.counts) || {};
+}
+
+export async function setClassRoster(counts) {
+  const store = seatsStore();
+  await store.setJSON(CLASS_ROSTER_KEY, { counts });
+}
+
+// ---------------------------------------------------------------------
 // 관리자 인증
 // ---------------------------------------------------------------------
 export function isAdminAuthorized(req) {
@@ -242,4 +257,26 @@ export function jsonResponse(obj, status = 200) {
       "Access-Control-Allow-Origin": "*",
     },
   });
+}
+
+// ---------------------------------------------------------------------
+// 전체 학생 명단 (학번+이름) - 미신청자 대조용
+// ---------------------------------------------------------------------
+export async function getStudentRoster() {
+  const store = seatsStore();
+  const data = await store.get(ROSTER_KEY, { type: "json", consistency: "strong" });
+  return (data && data.roster) || [];
+}
+
+export async function setStudentRoster(roster) {
+  const store = seatsStore();
+  await store.setJSON(ROSTER_KEY, { roster });
+}
+
+// 지금까지 예약을 완료(선점)한 학번 목록 (student:{id} 키 기준 = 가장 정확한 원본)
+export async function getBookedStudentIds() {
+  const store = seatsStore();
+  const listRes = await store.list({ prefix: STUDENT_PREFIX });
+  const blobs = (listRes && listRes.blobs) || [];
+  return blobs.map((b) => b.key.slice(STUDENT_PREFIX.length));
 }
